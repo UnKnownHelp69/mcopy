@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <windows.h>
 #include <signal.h>
+#include <stdint.h>
 
 #include "cursor.h"
 
@@ -11,24 +12,74 @@ void signal_handler(int signal) {
     exit(128 + signal);
 }
 
+/* Eval file size
+ * totalSize is output size of file in bytes
+ * Return 0 if success else error_code
+ */
+int getFileSize(char *file_path, int64_t *totalSize) {
+    HANDLE hFile = CreateFileA(file_path, GENERIC_READ, 
+                    FILE_SHARE_READ, NULL, OPEN_EXISTING, 
+                    FILE_ATTRIBUTE_NORMAL, NULL);
+    
+    if (hFile == INVALID_HANDLE_VALUE) {
+        return 1;
+    }
+
+    LARGE_INTEGER liSize;
+    if (!GetFileSizeEx(hFile, &liSize)) {
+        CloseHandle(hFile);
+        return 2;
+    }
+
+    CloseHandle(hFile);
+    *totalSize = liSize.QuadPart;
+    return 0;
+}
+
 /* 
  * Copy from file to file
  * source - path of file to copy
  * destination - path of target file
+ * fileSize is size of successfuly copied file in bytes
  * Returns 0 on success, non zero on error
  */
-int copyFileToFile(char *source, char *destination, int *file_size) {
-    hide_cursor();
-
+int copyFileToFile(char *source, char *destination, int64_t *fileSize) {
+    
+    /*
     for (int i = 1; i <= 5000; ++i) {
         int percent = (int)((i * 100) / 5000); 
         printf("\rProgress: %d%%", percent);
         fflush(stdout);
+    }*/
+    
+    int64_t totalSize = 0;
+    int64_t copied = 0;
+    int globPercent = -1;
+
+    int status = getFileSize(source, &totalSize);
+
+    if (status != 0) {
+        return -1;
+    }
+
+    *fileSize = totalSize;
+    hide_cursor();
+
+    while (0) {
+        // somehow copying
+        int chunkSize = 0;
+        copied += chunkSize;
+
+        int currPercent = (int)((100 * copied) / totalSize);
+
+        if (currPercent != globPercent) {
+            printf("\rProgress: %d%%", currPercent);
+            globPercent = currPercent;
+        }
     }
 
     show_cursor();
 
-    *file_size = 22;
     printf("\n");
 
     return 0;
@@ -102,11 +153,11 @@ int main(int argc, char *argv[]) {
         } else {
             printf("<destination> is a file\n");
             
-            int file_size = 0;
+            int64_t file_size = 0;
             int status = copyFileToFile(source, destination, &file_size);
             
             if (status == 0) {
-                printf("Successfuly copied %d\n", file_size);
+                printf("Successfuly copied %d bytes\n", file_size);
             } else {
                 printf("Exit with error code %d\n", status);
             }
