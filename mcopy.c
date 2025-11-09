@@ -7,11 +7,40 @@
 
 #include "cursor.h"
 
+#define KB_DISPLAY_THRESHOLD 5
+
 // Procces signals
 void signal_handler(int signal) {
     showCursor();
     exit(128 + signal);
 }
+
+/* Return optimal buffer size
+ * Take size of file in int64_t
+ */
+int64_t GetOptimalBufferSize(int64_t fileSize) {
+    int64_t size[] = {
+        64 * 1024, // 64KB
+        256 * 1024, // 256KB
+        1 * 1024 * 1024, // 1MB
+        4 * 1024 * 1024, // 4MB
+        8 * 1024 * 1024, // 8MB
+    };
+
+    int64_t tresholds[] = {
+        1 * 1024 * 1024, // Up to 1MB
+        10 * 1024 * 1024, // Up to 10MB
+        100 * 1024 * 1024, // Up to 100MB
+        1024 * 1024 * 1024, // Up to 1GB
+    };
+
+    for (int i = 0; i < 4; ++i) {
+        if (fileSize <= tresholds[i]) {
+            return size[i];
+        }
+    }
+    return size[4];
+} 
 
 /* Eval file size
  * totalSize is output size of file in bytes
@@ -20,12 +49,12 @@ void signal_handler(int signal) {
 int getFileSize(char *file_path, int64_t *totalSize) {
     HANDLE hFile = CreateFileA(file_path, GENERIC_READ, FILE_SHARE_READ, 
             NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    
+
     if (hFile == INVALID_HANDLE_VALUE) {
         return 1;
     }
 
-    LARGE_INTEGER liSize;
+    LARGE_INTEGER liSize; // winAPI struct
     if (!GetFileSizeEx(hFile, &liSize)) {
         CloseHandle(hFile);
         return 2;
@@ -49,43 +78,67 @@ int copyFileToFile(char *source, char *destination, int64_t *copiedSize, bool *K
     int globPercent = -1;
 
     int status = getFileSize(source, &totalSize);
-
+    
+    // getFileSize error
     if (status != 0) {
+        printf("Could not get source file size: %s. With error: %d\n", source, status);
         return -1;
     }
 
     HANDLE hSource = CreateFileA(source, GENERIC_READ, FILE_SHARE_READ, 
             NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    // Invalid source handle value error
     if (hSource == INVALID_HANDLE_VALUE) {
+        printf("Could not open file to read: %s\n", source);
         return 1;
     }
 
     HANDLE hDest = CreateFileA(destination, GENERIC_WRITE, 0, 
             NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    // Invalid destination handle value error
     if (hDest == INVALID_HANDLE_VALUE) {
         CloseHandle(hSource);
+        printf("Could not open/make file to write: %s\n", destination);
         return 2;
     }
 
-    hideCursor();
-
-    BYTE buffer[1 * 1024 * 1024]; // BYTE ~= uint8_t
-    DWORD readSize, writtenSize;
-    int64_t copied = 0;
-   
-    printf("\rProgress: 0%%");
-    while (ReadFile(hSource, buffer, sizeof(buffer), &readSize, NULL) && readSize > 0) {
-        if (!WriteFile(hDest, buffer, readSize, &writtenSize, NULL) || readSize != writtenSize) {
-            printf("\n");
-            showCursor();
+    
+    int64_t bufferSize = GetOptimalBufferSize(totalSize);
+    BYTE *buffer = malloc(bufferSize * sizeof(BYTE)); // BYTE ~= uint8_t
+    if (!buffer) {
+        bufferSize = 64 * 1024;
+        buffer = malloc(bufferSize * sizeof(BYTE));
+        if (!buffer) {
             CloseHandle(hSource);
             CloseHandle(hDest);
             return 3;
         }
+    }
 
-        copied += readSize;
+    DWORD readSize, writtenSize;
+    int64_t copiedCurr = 0;
+    
+    hideCursor();
+    printf("\rProgress: 0%%");
+    while (ReadFile(hSource, buffer, (DWORD)bufferSize, &readSize, NULL) && readSize > 0) {
+        // Write error
+        if (!WriteFile(hDest, buffer, readSize, &writtenSize, NULL) || readSize != writtenSize) {
+            printf("\nError: Copy failed at %lld/%lld bytes\n", copiedCurr, totalSize);
+            printf("Removing incompleted file: %s\n", destination);
 
-        int currPercent = (int)((100 * copied) / totalSize);
+            free(buffer);
+            showCursor();
+            CloseHandle(hSource);
+            CloseHandle(hDest);
+            if (!DeleteFileA(destination)) {
+                printf("Could not delete incompleted file %s\n", destination);
+            }
+            return 4;
+        }
+
+        copiedCurr += readSize;
+
+        int currPercent = (int)((100LL * copiedCurr) / totalSize);
 
         if (currPercent != globPercent) {
             printf("\rProgress: %d%%", currPercent);
@@ -93,12 +146,26 @@ int copyFileToFile(char *source, char *destination, int64_t *copiedSize, bool *K
         }
     }
 
+    free(buffer);
     showCursor();
     CloseHandle(hSource);
     CloseHandle(hDest);
     printf("\n");
+
+    // Smthg got wrong
+    if (totalSize != copiedCurr) {
+        printf("\nError: Copy failed at %lld/%lld bytes\n", copiedCurr, totalSize);
+        printf("Removing incompleted file: %s\n", destination);
+        
+        if (!DeleteFileA(destination)) {
+            printf("Could not delete incompleted file %s\n", destination);
+        }
+        return 5;
+    }
     
-    if (totalSize / 1024 > 5) {
+
+
+    if (totalSize / 1024 > KB_DISPLAY_THRESHOLD) {
         *KBytes = 1;
         *copiedSize = totalSize / 1024;
     } else {
@@ -181,8 +248,8 @@ int main(int argc, char *argv[]) {
             int status = copyFileToFile(source, destination, &file_size, &KBtsOut);
             
             if (status == 0) {
-                if (KBtsOut) printf("Successfuly copied %d KB\n", file_size);
-                else printf("Successfuly copied %d B\n", file_size);
+                if (KBtsOut) printf("Successfuly copied %lld KB\n", file_size);
+                else printf("Successfuly copied %lld B\n", file_size);
             } else {
                 printf("Exit with error code %d\n", status);
             }
