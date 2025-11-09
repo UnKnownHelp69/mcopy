@@ -3,12 +3,13 @@
 #include <windows.h>
 #include <signal.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "cursor.h"
 
 // Procces signals
 void signal_handler(int signal) {
-    show_cursor();
+    showCursor();
     exit(128 + signal);
 }
 
@@ -17,9 +18,8 @@ void signal_handler(int signal) {
  * Return 0 if success else error_code
  */
 int getFileSize(char *file_path, int64_t *totalSize) {
-    HANDLE hFile = CreateFileA(file_path, GENERIC_READ, 
-                    FILE_SHARE_READ, NULL, OPEN_EXISTING, 
-                    FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE hFile = CreateFileA(file_path, GENERIC_READ, FILE_SHARE_READ, 
+            NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     
     if (hFile == INVALID_HANDLE_VALUE) {
         return 1;
@@ -40,20 +40,12 @@ int getFileSize(char *file_path, int64_t *totalSize) {
  * Copy from file to file
  * source - path of file to copy
  * destination - path of target file
- * fileSize is size of successfuly copied file in bytes
+ * fileSize is size of successfuly copied file in bytes, 
+ * if in KB flag @KBytes will be up
  * Returns 0 on success, non zero on error
  */
-int copyFileToFile(char *source, char *destination, int64_t *fileSize) {
-    
-    /*
-    for (int i = 1; i <= 5000; ++i) {
-        int percent = (int)((i * 100) / 5000); 
-        printf("\rProgress: %d%%", percent);
-        fflush(stdout);
-    }*/
-    
+int copyFileToFile(char *source, char *destination, int64_t *copiedSize, bool *KBytes) {
     int64_t totalSize = 0;
-    int64_t copied = 0;
     int globPercent = -1;
 
     int status = getFileSize(source, &totalSize);
@@ -62,13 +54,36 @@ int copyFileToFile(char *source, char *destination, int64_t *fileSize) {
         return -1;
     }
 
-    *fileSize = totalSize;
-    hide_cursor();
+    HANDLE hSource = CreateFileA(source, GENERIC_READ, FILE_SHARE_READ, 
+            NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hSource == INVALID_HANDLE_VALUE) {
+        return 1;
+    }
 
-    while (0) {
-        // somehow copying
-        int chunkSize = 0;
-        copied += chunkSize;
+    HANDLE hDest = CreateFileA(destination, GENERIC_WRITE, 0, 
+            NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hDest == INVALID_HANDLE_VALUE) {
+        CloseHandle(hSource);
+        return 2;
+    }
+
+    hideCursor();
+
+    BYTE buffer[1 * 1024 * 1024]; // BYTE ~= uint8_t
+    DWORD readSize, writtenSize;
+    int64_t copied = 0;
+   
+    printf("\rProgress: 0%%");
+    while (ReadFile(hSource, buffer, sizeof(buffer), &readSize, NULL) && readSize > 0) {
+        if (!WriteFile(hDest, buffer, readSize, &writtenSize, NULL) || readSize != writtenSize) {
+            printf("\n");
+            showCursor();
+            CloseHandle(hSource);
+            CloseHandle(hDest);
+            return 3;
+        }
+
+        copied += readSize;
 
         int currPercent = (int)((100 * copied) / totalSize);
 
@@ -78,9 +93,17 @@ int copyFileToFile(char *source, char *destination, int64_t *fileSize) {
         }
     }
 
-    show_cursor();
-
+    showCursor();
+    CloseHandle(hSource);
+    CloseHandle(hDest);
     printf("\n");
+    
+    if (totalSize / 1024 > 5) {
+        *KBytes = 1;
+        *copiedSize = totalSize / 1024;
+    } else {
+        *copiedSize = totalSize;
+    }
 
     return 0;
 }
@@ -125,7 +148,7 @@ int main(int argc, char *argv[]) {
     char *source = argv[1];
     char *destination = argv[2];
 
-    DWORD source_type = GetFileAttributesA(source);
+    DWORD source_type = GetFileAttributesA(source); //DWORD ~= uint32_t
     DWORD destination_type = GetFileAttributesA(destination);
 
     if (source_type == INVALID_FILE_ATTRIBUTES) {
@@ -154,10 +177,12 @@ int main(int argc, char *argv[]) {
             printf("<destination> is a file\n");
             
             int64_t file_size = 0;
-            int status = copyFileToFile(source, destination, &file_size);
+            bool KBtsOut = 0;
+            int status = copyFileToFile(source, destination, &file_size, &KBtsOut);
             
             if (status == 0) {
-                printf("Successfuly copied %d bytes\n", file_size);
+                if (KBtsOut) printf("Successfuly copied %d KB\n", file_size);
+                else printf("Successfuly copied %d B\n", file_size);
             } else {
                 printf("Exit with error code %d\n", status);
             }

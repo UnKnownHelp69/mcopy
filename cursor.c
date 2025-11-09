@@ -2,7 +2,7 @@
 #include "cursor.h"
 
 // Function to hide cursor
-void hide_cursor(void) {
+void hideCursor(void) {
     HANDLE consoleHandle = GetStdHandle(STD_OUTPUT_HANDLE);
     CONSOLE_CURSOR_INFO cursorInfo;
     GetConsoleCursorInfo(consoleHandle, &cursorInfo);
@@ -11,7 +11,7 @@ void hide_cursor(void) {
 }
 
 // Function to show cursor
-void show_cursor(void) {
+void showCursor(void) {
     HANDLE consoleHandle = GetStdHandle(STD_OUTPUT_HANDLE);
     CONSOLE_CURSOR_INFO cursorInfo;
     GetConsoleCursorInfo(consoleHandle, &cursorInfo);

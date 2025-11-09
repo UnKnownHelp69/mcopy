@@ -1,6 +1,6 @@
 #pragma once
 #include <windows.h>
 
-void hide_cursor(void);
-void show_cursor(void);
+void hideCursor(void);
+void showCursor(void);
 
