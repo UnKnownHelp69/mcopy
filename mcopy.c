@@ -154,7 +154,7 @@ int copyFileToFile(char *source, char *destination, int64_t *copiedSize, bool *K
 
     // Smthg got wrong
     if (totalSize != copiedCurr) {
-        printf("\nError: Copy failed at %lld/%lld bytes\n", copiedCurr, totalSize);
+        printf("Error: Copy failed at %lld/%lld bytes\n", copiedCurr, totalSize);
         printf("Removing incompleted file: %s\n", destination);
         
         if (!DeleteFileA(destination)) {
