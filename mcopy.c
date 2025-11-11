@@ -70,7 +70,7 @@ int getFileSize(const char *file_path, int64_t *totalSize) {
  * source - path of file to copy
  * destination - path of target file
  * fileSize is size of successfuly copied file in bytes, 
- * if in KB flag @KBytes will be uped
+ * if in KB rize KBytes, else bytes
  * Returns 0 on success, non zero on error
  */
 int copyFileToFile(const char *source, const char *destination, int64_t *copiedSize, bool *KBytes) {
@@ -176,7 +176,12 @@ int copyFileToFile(const char *source, const char *destination, int64_t *copiedS
     return 0;
 }
 
-
+/* Return 0 on success, non zero on error
+ * Take path of path to extract name of file (after last "/")
+ * Put in char **name name of file by pointer
+ * TODO check if it is name of file non folder
+ * But if we use ths fun we know that all pathes are correct
+ * */
 int getNameFile(const char *path, char **name) {
     int size = (int)strlen(path);
     const char * splitter = path + size;
@@ -199,7 +204,9 @@ int getNameFile(const char *path, char **name) {
 /* 
  * Copy from file to folder
  * source - path of file to copy
- * destination - path of target folder
+ * folderDestination - path of target folder
+ * fileSize is size of successfuly copied file in bytes
+ * rize KBytes if in KB, else in bytes
  * Returns 0 on success, non zero on error
  */
 int copyFileToFolder(const char *source, const char *folderDestination, int64_t *copiedSize, bool *KBytes) {
