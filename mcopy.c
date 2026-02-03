@@ -54,7 +54,7 @@ int getFileSize(const char *file_path, int64_t *totalSize) {
         return 1;
     }
 
-    LARGE_INTEGER liSize; // winAPI struct
+    LARGE_INTEGER liSize; // winAPI union for int (max 64-bit)
     if (!GetFileSizeEx(hFile, &liSize)) {
         CloseHandle(hFile);
         return 2;
@@ -70,7 +70,7 @@ int getFileSize(const char *file_path, int64_t *totalSize) {
  * source - path of file to copy
  * destination - path of target file
  * fileSize is size of successfuly copied file in bytes, 
- * if in KB rize KBytes, else bytes
+ * if in KB rize KBytes, not rized - bytes
  * Returns 0 on success, non zero on error
  */
 int copyFileToFile(const char *source, const char *destination, int64_t *copiedSize, bool *KBytes) {
@@ -82,7 +82,7 @@ int copyFileToFile(const char *source, const char *destination, int64_t *copiedS
     // getFileSize error
     if (status != 0) {
         printf("Could not get source file size: %s. With error: %d\n", source, status);
-        return -1;
+        return 1;
     }
 
     HANDLE hSource = CreateFileA(source, GENERIC_READ, FILE_SHARE_READ, 
@@ -90,7 +90,7 @@ int copyFileToFile(const char *source, const char *destination, int64_t *copiedS
     // Invalid source handle value error
     if (hSource == INVALID_HANDLE_VALUE) {
         printf("Could not open file to read: %s\n", source);
-        return 1;
+        return 2;
     }
 
     HANDLE hDest = CreateFileA(destination, GENERIC_WRITE, 0, 
@@ -99,7 +99,7 @@ int copyFileToFile(const char *source, const char *destination, int64_t *copiedS
     if (hDest == INVALID_HANDLE_VALUE) {
         CloseHandle(hSource);
         printf("Could not open/make file to write: %s\n", destination);
-        return 2;
+        return 3;
     }
 
     
@@ -112,7 +112,7 @@ int copyFileToFile(const char *source, const char *destination, int64_t *copiedS
             printf("Could not locate memory\n");
             CloseHandle(hSource);
             CloseHandle(hDest);
-            return 3;
+            return 4;
         }
     }
 
@@ -133,8 +133,9 @@ int copyFileToFile(const char *source, const char *destination, int64_t *copiedS
             CloseHandle(hDest);
             if (!DeleteFileA(destination)) {
                 printf("Could not delete incompleted file %s\n", destination);
+                return 5;
             }
-            return 4;
+            return 6;
         }
 
         copiedCurr += readSize;
@@ -160,14 +161,15 @@ int copyFileToFile(const char *source, const char *destination, int64_t *copiedS
         
         if (!DeleteFileA(destination)) {
             printf("Could not delete incompleted file %s\n", destination);
+            return 7;
         }
-        return 5;
+        return 8;
     }
     
 
 
     if (totalSize / 1024 > KB_DISPLAY_THRESHOLD) {
-        *KBytes = 1;
+        *KBytes = true;
         *copiedSize = totalSize / 1024;
     } else {
         *copiedSize = totalSize;
@@ -218,7 +220,7 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
     // getFileSize error
     if (status != 0) {
         printf("Could not get source file size: %s. With error: %d\n", source, status);
-        return -1;
+        return 1;
     }
 
     HANDLE hSource = CreateFileA(source, GENERIC_READ, FILE_SHARE_READ, 
@@ -226,7 +228,7 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
     // Invalid source handle value error
     if (hSource == INVALID_HANDLE_VALUE) {
         printf("Could not open file to read: %s\n", source);
-        return 1;
+        return 2;
     }
     
     char *name;
@@ -234,7 +236,7 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
     if (status != 0) {
         CloseHandle(hSource);
         printf("Could not find name of file to copy %s\n", source);
-        return -2;
+        return 3;
     }
 
     char *destination = (char *)malloc((int)strlen(folderDestination) + (int)strlen(name) + 2);
@@ -242,7 +244,7 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
         CloseHandle(hSource);
         free(name);
         printf("Could not locate memory\n");
-        return -3;
+        return 4;
     }
     strcpy(destination, folderDestination);
     if (folderDestination[strlen(folderDestination) - 1] != '\\' &&
@@ -259,7 +261,7 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
         CloseHandle(hSource);
         printf("Could not open/make file to write: %s\n", destination);
         free(destination);
-        return 2;
+        return 5;
     }
 
     
@@ -273,7 +275,7 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
             CloseHandle(hSource);
             CloseHandle(hDest);
             free(destination);
-            return 3;
+            return 6;
         }
     }
 
@@ -294,9 +296,11 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
             CloseHandle(hDest);
             if (!DeleteFileA(destination)) {
                 printf("Could not delete incompleted file %s\n", destination);
+                free(destination);
+                return 7;
             }
             free(destination);
-            return 4;
+            return 8;
         }
 
         copiedCurr += readSize;
@@ -322,19 +326,20 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
         
         if (!DeleteFileA(destination)) {
             printf("Could not delete incompleted file %s\n", destination);
+            free(destination);
+            return 9;
         }
         free(destination);
-        return 5;
+        return 10;
     }
     free(destination);
 
     if (totalSize / 1024 > KB_DISPLAY_THRESHOLD) {
-        *KBytes = 1;
+        *KBytes = true;
         *copiedSize = totalSize / 1024;
     } else {
         *copiedSize = totalSize;
     }
-
 
     return 0;
 }
@@ -345,7 +350,19 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
  * destination - path of target folder
  * Returns 0 on success, non zero on error
  */
-int copyFolderToFolder(char *source, char *destination) {
+int copyFolderToFolder(const char *source, const char *folderDestination, int64_t *copiedSize, bool *KBytes) {
+    /* TODO
+     * Check if source exists
+     * Check if dest exists
+     * Make new folder with the same name
+     * Iterate by all files in folder
+     * if file = copy file to folder
+     * if folder = copy folder to folder
+     * if != 0 any rec so rize error
+     * else continue
+     * so on
+     * */
+
     return 0;
 }
 
@@ -386,6 +403,18 @@ int main(int argc, char *argv[]) {
         printf("<source> is a folder\n");
         if (destination_type & FILE_ATTRIBUTE_DIRECTORY) {
             printf("<destination> is a folder\n");
+            
+            int64_t file_size = 0;
+            bool KBtsOut = false;
+            int status = copyFolderToFolder(source, destination, &file_size, &KBtsOut);
+
+            if (status == 0) {
+                if (KBtsOut) printf("Successfuly copied %lld KB\n", file_size);
+                else printf("Successfuly copied %lld B\n", file_size);
+            } else {
+                printf("Exit with error code %d\n", status);
+            }
+
         } else {
             printf("It is impossible to copy folder to file\n");
             return 1;
@@ -410,7 +439,7 @@ int main(int argc, char *argv[]) {
             printf("<destination> is a file\n");
             
             int64_t file_size = 0;
-            bool KBtsOut = 0;
+            bool KBtsOut = false;
             int status = copyFileToFile(source, destination, &file_size, &KBtsOut);
             
             if (status == 0) {
