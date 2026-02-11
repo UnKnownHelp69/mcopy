@@ -3,3 +3,5 @@ test/
 *.txt
 *.o
 test.c
+testPDF.pdf
+testPhoto.png

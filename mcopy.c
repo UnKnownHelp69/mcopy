@@ -15,6 +15,13 @@ void signal_handler(int signal) {
     exit(128 + signal);
 }
 
+
+
+// Print progress in cmd
+void printfProgress() {
+
+}
+
 /* Return optimal buffer size
  * Take size of file in int64_t
  */
@@ -65,6 +72,59 @@ int getFileSize(const char *file_path, int64_t *totalSize) {
     return 0;
 }
 
+/* Logic of copiyng one exactly valid file to valid dest
+0 - if good, else error
+*/
+int copyFiletoFileByValidSources(const char *destination, const HANDLE hSource, 
+    const HANDLE hDest, int64_t *copiedCurr, const int64_t totalSize) {
+    
+    int globPercent = -1;
+    DWORD readSize, writtenSize;
+
+    int64_t bufferSize = GetOptimalBufferSize(totalSize);
+    BYTE *buffer = malloc(bufferSize * sizeof(BYTE)); // BYTE ~= uint8_t
+    if (!buffer) {
+        bufferSize = 64 * 1024;
+        buffer = malloc(bufferSize * sizeof(BYTE));
+        if (!buffer) {
+            printf("Could not locate memory\n");
+            CloseHandle(hSource);
+            CloseHandle(hDest);
+            return 1;
+        }
+    }
+    
+    while (ReadFile(hSource, buffer, (DWORD)bufferSize, &readSize, NULL) && readSize > 0) {
+        // Write error
+        if (!WriteFile(hDest, buffer, readSize, &writtenSize, NULL) || readSize != writtenSize) {
+            printf("\nError: Copy failed at %lld/%lld bytes\n", *copiedCurr, totalSize);
+            printf("Removing incompleted file: %s\n", destination);
+
+            free(buffer);
+            showCursor();
+            CloseHandle(hSource);
+            CloseHandle(hDest);
+            if (!DeleteFileA(destination)) {
+                printf("Could not delete incompleted file %s\n", destination);
+                return 2;
+            }
+            return 3;
+        }
+
+        *copiedCurr += readSize;
+
+        int currPercent = (int)((100LL * (*copiedCurr)) / totalSize);
+
+        if (currPercent != globPercent) {
+            printf("\rProgress: %d%%", currPercent);
+            globPercent = currPercent;
+        }
+    }
+
+    free(buffer);
+    return 0;
+}
+
 /* 
  * Copy from file to file
  * source - path of file to copy
@@ -75,7 +135,6 @@ int getFileSize(const char *file_path, int64_t *totalSize) {
  */
 int copyFileToFile(const char *source, const char *destination, int64_t *copiedSize, bool *KBytes) {
     int64_t totalSize = 0;
-    int globPercent = -1;
 
     int status = getFileSize(source, &totalSize);
     
@@ -101,54 +160,15 @@ int copyFileToFile(const char *source, const char *destination, int64_t *copiedS
         printf("Could not open/make file to write: %s\n", destination);
         return 3;
     }
-
-    
-    int64_t bufferSize = GetOptimalBufferSize(totalSize);
-    BYTE *buffer = malloc(bufferSize * sizeof(BYTE)); // BYTE ~= uint8_t
-    if (!buffer) {
-        bufferSize = 64 * 1024;
-        buffer = malloc(bufferSize * sizeof(BYTE));
-        if (!buffer) {
-            printf("Could not locate memory\n");
-            CloseHandle(hSource);
-            CloseHandle(hDest);
-            return 4;
-        }
-    }
-
-    DWORD readSize, writtenSize;
+   
     int64_t copiedCurr = 0;
     
     hideCursor();
     printf("\rProgress: 0%%");
-    while (ReadFile(hSource, buffer, (DWORD)bufferSize, &readSize, NULL) && readSize > 0) {
-        // Write error
-        if (!WriteFile(hDest, buffer, readSize, &writtenSize, NULL) || readSize != writtenSize) {
-            printf("\nError: Copy failed at %lld/%lld bytes\n", copiedCurr, totalSize);
-            printf("Removing incompleted file: %s\n", destination);
-
-            free(buffer);
-            showCursor();
-            CloseHandle(hSource);
-            CloseHandle(hDest);
-            if (!DeleteFileA(destination)) {
-                printf("Could not delete incompleted file %s\n", destination);
-                return 5;
-            }
-            return 6;
-        }
-
-        copiedCurr += readSize;
-
-        int currPercent = (int)((100LL * copiedCurr) / totalSize);
-
-        if (currPercent != globPercent) {
-            printf("\rProgress: %d%%", currPercent);
-            globPercent = currPercent;
-        }
-    }
-
-    free(buffer);
+    
+    status = copyFiletoFileByValidSources(destination, hSource, hDest, &copiedCurr, totalSize);
+    if (status != 0) return 5; // if error fun cleans after itself ONLY in that fun.
+    
     showCursor();
     CloseHandle(hSource);
     CloseHandle(hDest);
@@ -161,12 +181,10 @@ int copyFileToFile(const char *source, const char *destination, int64_t *copiedS
         
         if (!DeleteFileA(destination)) {
             printf("Could not delete incompleted file %s\n", destination);
-            return 7;
+            return 6;
         }
-        return 8;
+        return 7;
     }
-    
-
 
     if (totalSize / 1024 > KB_DISPLAY_THRESHOLD) {
         *KBytes = true;
@@ -264,56 +282,17 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
         return 5;
     }
 
-    
-    int64_t bufferSize = GetOptimalBufferSize(totalSize);
-    BYTE *buffer = malloc(bufferSize * sizeof(BYTE)); // BYTE ~= uint8_t
-    if (!buffer) {
-        bufferSize = 64 * 1024;
-        buffer = malloc(bufferSize * sizeof(BYTE));
-        if (!buffer) {
-            printf("Could not locate memory\n");
-            CloseHandle(hSource);
-            CloseHandle(hDest);
-            free(destination);
-            return 6;
-        }
-    }
-
-    DWORD readSize, writtenSize;
     int64_t copiedCurr = 0;
     
     hideCursor();
     printf("\rProgress: 0%%");
-    while (ReadFile(hSource, buffer, (DWORD)bufferSize, &readSize, NULL) && readSize > 0) {
-        // Write error
-        if (!WriteFile(hDest, buffer, readSize, &writtenSize, NULL) || readSize != writtenSize) {
-            printf("\nError: Copy failed at %lld/%lld bytes\n", copiedCurr, totalSize);
-            printf("Removing incompleted file: %s\n", destination);
 
-            free(buffer);
-            showCursor();
-            CloseHandle(hSource);
-            CloseHandle(hDest);
-            if (!DeleteFileA(destination)) {
-                printf("Could not delete incompleted file %s\n", destination);
-                free(destination);
-                return 7;
-            }
-            free(destination);
-            return 8;
-        }
-
-        copiedCurr += readSize;
-
-        int currPercent = (int)((100LL * copiedCurr) / totalSize);
-
-        if (currPercent != globPercent) {
-            printf("\rProgress: %d%%", currPercent);
-            globPercent = currPercent;
-        }
+    status = copyFiletoFileByValidSources(destination, hSource, hDest, &copiedCurr, totalSize);
+    if (status != 0) {
+        free(destination);
+        return 7;
     }
 
-    free(buffer);
     showCursor();
     CloseHandle(hSource);
     CloseHandle(hDest);
