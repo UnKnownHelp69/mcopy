@@ -15,13 +15,6 @@ void signal_handler(int signal) {
     exit(128 + signal);
 }
 
-
-
-// Print progress in cmd
-void printfProgress() {
-
-}
-
 /* Return optimal buffer size
  * Take size of file in int64_t
  */
@@ -167,7 +160,7 @@ int copyFileToFile(const char *source, const char *destination, int64_t *copiedS
     printf("\rProgress: 0%%");
     
     status = copyFiletoFileByValidSources(destination, hSource, hDest, &copiedCurr, totalSize);
-    if (status != 0) return 5; // if error fun cleans after itself ONLY in that fun.
+    if (status != 0) return 4; // if error fun cleans after itself ONLY in that fun.
     
     showCursor();
     CloseHandle(hSource);
@@ -181,9 +174,9 @@ int copyFileToFile(const char *source, const char *destination, int64_t *copiedS
         
         if (!DeleteFileA(destination)) {
             printf("Could not delete incompleted file %s\n", destination);
-            return 6;
+            return 5;
         }
-        return 7;
+        return 6;
     }
 
     if (totalSize / 1024 > KB_DISPLAY_THRESHOLD) {
@@ -231,7 +224,6 @@ int getNameFile(const char *path, char **name) {
  */
 int copyFileToFolder(const char *source, const char *folderDestination, int64_t *copiedSize, bool *KBytes) {
     int64_t totalSize = 0;
-    int globPercent = -1;
 
     int status = getFileSize(source, &totalSize);
     
@@ -290,7 +282,7 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
     status = copyFiletoFileByValidSources(destination, hSource, hDest, &copiedCurr, totalSize);
     if (status != 0) {
         free(destination);
-        return 7;
+        return 6;
     }
 
     showCursor();
@@ -306,10 +298,10 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
         if (!DeleteFileA(destination)) {
             printf("Could not delete incompleted file %s\n", destination);
             free(destination);
-            return 9;
+            return 7;
         }
         free(destination);
-        return 10;
+        return 8;
     }
     free(destination);
 
