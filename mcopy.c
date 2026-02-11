@@ -316,15 +316,70 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
 }
 
 /* 
+ * Take path of folder and ptr of totalSize
+ * return 0 if success else error code
+ * put size of folder, or that part of folder
+ * where is possible to gain into totalSize
+ */
+int getFolderSize(const char *folderPath, int64_t *totalSize) {
+    WIN32_FIND_DATAA findData;
+    char searchPath[MAX_PATH];
+    HANDLE hFind;
+    *totalSize = 0;
+    int status = 0;
+
+    // Format path to find
+    snprintf(searchPath, sizeof(searchPath), "%s\\*", folderPath);
+
+    hFind = FindFirstFileA(searchPath, &findData);
+    if (hFind == INVALID_HANDLE_VALUE) {
+        if (GetLastError() == ERROR_FILE_NOT_FOUND) return 0; // empty folder
+        else return 1; // smth else is wrong
+    }
+
+    do {
+        if (findData.cFileName[0] == '.' && (findData.cFileName[1] == '\0' || 
+        (findData.cFileName[1] == '.' && findData.cFileName[2] == '\0'))) continue;
+
+        char fullPath[MAX_PATH];
+        snprintf(fullPath, sizeof(fullPath), "%s\\%s", folderPath, findData.cFileName);
+
+        if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            int64_t subFolderSize = 0;
+            status = getFolderSize(fullPath, &subFolderSize);
+            if (status != 0) break;
+            *totalSize += subFolderSize;
+        } else {
+            LARGE_INTEGER tmpLiSize;
+            tmpLiSize.LowPart = findData.nFileSizeLow;
+            tmpLiSize.HighPart = findData.nFileSizeHigh;
+            *totalSize += tmpLiSize.QuadPart;
+        }
+    } while (FindNextFileA(hFind, &findData));
+
+    DWORD lastError = GetLastError();
+    FindClose(hFind);
+
+    if (status != 0) {
+        return 2;
+    }
+
+    if (lastError != ERROR_NO_MORE_FILES) {
+        return 3;
+    }
+
+    return 0;
+}
+
+
+/* 
  * Copy from folder to folder
  * source - path of folder to copy
- * destination - path of target folder
+ * destination - path of target fold%er
  * Returns 0 on success, non zero on error
  */
-int copyFolderToFolder(const char *source, const char *folderDestination, int64_t *copiedSize, bool *KBytes) {
+int copyFolderToFolder(const char *sourceFolder, const char *destinationFolder, int64_t *copiedSize, bool *KBytes) {
     /* TODO
-     * Check if source exists
-     * Check if dest exists
      * Make new folder with the same name
      * Iterate by all files in folder
      * if file = copy file to folder
@@ -333,6 +388,25 @@ int copyFolderToFolder(const char *source, const char *folderDestination, int64_
      * else continue
      * so on
      * */
+    DWORD sourceAttributes = GetFileAttributesA(sourceFolder);
+    DWORD destAttributes = GetFileAttributesA(destinationFolder);
+    
+    if (sourceAttributes == INVALID_FILE_ATTRIBUTES) {
+        printf("Could not get acces to the source: %s\n", sourceFolder);
+        return 1;
+    }
+    if (destAttributes == INVALID_FILE_ATTRIBUTES) {
+        printf("Could not get acces to the destionation: %s\n", destinationFolder);
+        return 2;
+    }
+
+    int64_t totalSize = 0;
+    int status = getFolderSize(sourceFolder, &totalSize);
+    if (status != 0) {
+        return 3;
+    }
+
+    printf("Total size of folder is %lld bytes\n", totalSize);
 
     return 0;
 }
