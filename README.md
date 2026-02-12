@@ -55,10 +55,10 @@ mcopy -F C:\work D:\work_backup
 
 | Flag | Defenition | Example |
 |:----:|---------|---------------------|
-| 🟢 `-r` | **Replace existing files**<br><small>Overwrites files with the same name</small> | `mcopy -r file.txt D:\` |
-| 🔴 `-R` | **Replace existing folders**<br><small>Deletes the folder before copying</small> | `mcopy -R folder D:\` |
-| 🔵 `-A` | **Add to existing folders**<br><small>Copies new files without replacing existing ones</small> | `mcopy -A folder D:\` |
-| ⚫ `-F` | **Force flag**<br><small>Ignore all = `-r` + `-R`</small> | `mcopy -F source D:\` |
+| `-r` | **Replace existing files**<br><small>Overwrites files with the same name</small> | `mcopy -r file.txt D:\` |
+| `-R` | **Replace existing folders**<br><small>Deletes the folder before copying</small> | `mcopy -R folder D:\` |
+| `-A` | **Add to existing folders**<br><small>Copies new files without replacing existing ones</small> | `mcopy -A folder D:\` |
+| `-F` | **Force flag**<br><small>Ignore all = `-r` + `-R`</small> | `mcopy -F source D:\` |
 
 ---
 
