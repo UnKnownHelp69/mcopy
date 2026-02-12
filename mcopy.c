@@ -31,7 +31,8 @@ enum {
     inputError,
     undefinedError,
     deletFullFolderError,
-    infRecursionError
+    infRecursionError,
+    deleteFolderError
 };
 
 struct commands_t commands;
@@ -132,7 +133,8 @@ int copyFiletoFileByValidPathes(const char *destination, const HANDLE hSource,
 
         *copiedCurr += readSize;
 
-        int currPercent = (int)((100LL * (*copiedCurr)) / totalSize);
+        int currPercent = 0;
+        if (totalSize > 0) currPercent = (int)((100LL * (*copiedCurr)) / totalSize);
 
         if (currPercent != globPercent && !calledByFun) {
             printf("\rProgress: %d%%", currPercent);
@@ -301,6 +303,7 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
     status = makeNewPathBySourcePathAndDestPath(source, folderDestination, &destination);
     
     if (status != 0) {
+        if (destination != NULL) free(destination);
         CloseHandle(hSource);
         printf("\nCould not make path into dest folder %s\n", folderDestination);
         return makeNewPathBySourcePathAndDestPathError;
@@ -430,7 +433,52 @@ int getFolderSize(const char *folderPath, int64_t *totalSize) {
 
 
 int deleteFullFolder(const char *path) {
-    
+    int status = 0;
+    WIN32_FIND_DATAA findData;
+    char searchPath[MAX_PATH];
+    HANDLE hFind;
+
+    // Format path to find
+    snprintf(searchPath, sizeof(searchPath), "%s\\*", path);
+
+    hFind = FindFirstFileA(searchPath, &findData);
+    if (hFind == INVALID_HANDLE_VALUE) {
+        if (GetLastError() == ERROR_FILE_NOT_FOUND) return 0; // empty folder
+        else return fileAccessError;
+    }
+
+    do {
+        if (findData.cFileName[0] == '.' && (findData.cFileName[1] == '\0' || 
+        (findData.cFileName[1] == '.' && findData.cFileName[2] == '\0'))) continue;
+
+        char sourcePath[MAX_PATH];
+        snprintf(sourcePath, sizeof(sourcePath), "%s\\%s", path, findData.cFileName);
+
+        if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) { // folder
+            status = deleteFullFolder(sourcePath);
+            if (status != 0) {
+                printf("\nCannot delete folder: %s\n", sourcePath);
+                FindClose(hFind);
+                return deleteFolderError;
+            }
+        } else { // file
+            if (!DeleteFileA(sourcePath)) {
+                printf("\nCannot delete file: %s\n", sourcePath);
+                return deleteFileError;
+            }
+        }
+    } while (FindNextFileA(hFind, &findData));
+
+    FindClose(hFind);
+    if (!RemoveDirectoryA(path)) {
+        DWORD error = GetLastError();
+        printf("\nDelete folder error: %s\n", path);
+        return deleteFolderError;
+    }
+
+    DWORD lastError = GetLastError();
+    if (lastError != ERROR_NO_MORE_FILES) return undefinedError;
+
     return 0;
 }
 
@@ -446,8 +494,10 @@ int createFolderIfNotExist(const char *path) {
             return 0;
         } else if (commands.replExistFold) {
             int status = deleteFullFolder(path);
-            if (status == 0) return 0;
-            return deletFullFolderError;
+            if (status == 0) {
+                if (CreateDirectoryA(path, NULL)) return 0;
+                else return fileAccessError;
+            } else return deletFullFolderError;
         } else {
             printf("\nFolder exists, chose what to do with that: %s\n", path);
             return inputError;
@@ -546,7 +596,8 @@ int copyFolderToFolder(const char *sourceFolder, const char *destinationFolder, 
     if (!calledByFun) {
         printf("\rProgress: 0%%");
     } else {
-        int currPercent = (int)((100LL * (*copiedCurr)) / totalSize);
+        int currPercent = 0;
+        if (totalSize > 0) currPercent = (int)((100LL * (*copiedCurr)) / totalSize);
         printf("\rProgress: %d%%", currPercent);
     }
 
