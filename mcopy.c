@@ -107,7 +107,7 @@ int copyFiletoFileByValidPathes(const char *destination, const HANDLE hSource,
 
         int currPercent = (int)((100LL * (*copiedCurr)) / totalSize);
 
-        if (currPercent != globPercent && calledByFun == 0) {
+        if (currPercent != globPercent && !calledByFun) {
             printf("\rProgress: %d%%", currPercent);
             globPercent = currPercent;
         }
@@ -156,14 +156,14 @@ int copyFileToFile(const char *source, const char *destination, int64_t *copiedS
    
     int64_t copiedCurr = 0;
     
-    if (calledByFun == 0) printf("\rProgress: 0%%");
+    if (!calledByFun) printf("\rProgress: 0%%");
     
     status = copyFiletoFileByValidPathes(destination, hSource, hDest, &copiedCurr, totalSize, calledByFun);
     if (status != 0) return 4; // if error fun cleans after itself ONLY in that fun.
     
     CloseHandle(hSource);
     CloseHandle(hDest);
-    if (calledByFun == 0) printf("\n");
+    if (!calledByFun) printf("\n");
 
     // Smthg got wrong
     if (totalSize != copiedCurr) {
@@ -177,7 +177,7 @@ int copyFileToFile(const char *source, const char *destination, int64_t *copiedS
         return 6;
     }
 
-    if (totalSize / 1024 > KB_DISPLAY_THRESHOLD && calledByFun == 0) {
+    if (totalSize / 1024 > KB_DISPLAY_THRESHOLD && !calledByFun) {
         *KBytes = true;
         *copiedSize = totalSize / 1024;
     } else {
@@ -290,7 +290,7 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
 
     int64_t copiedCurr = 0;
     
-    if (calledByFun == 0) printf("\rProgress: 0%%");
+    if (!calledByFun) printf("\rProgress: 0%%");
     
     status = copyFiletoFileByValidPathes(destination, hSource, hDest, &copiedCurr, totalSize, calledByFun);
     
@@ -303,7 +303,7 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
     }
 
 
-    if (calledByFun == 0) printf("\n");
+    if (!calledByFun) printf("\n");
 
     // Smthg got wrong
     if (totalSize != copiedCurr) {
@@ -320,7 +320,7 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
     }
     free(destination);
 
-    if (totalSize / 1024 > KB_DISPLAY_THRESHOLD && calledByFun == 0) {
+    if (totalSize / 1024 > KB_DISPLAY_THRESHOLD && !calledByFun) {
         *KBytes = true;
         *copiedSize = totalSize / 1024;
     } else {
@@ -362,7 +362,10 @@ int getFolderSize(const char *folderPath, int64_t *totalSize) {
         if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
             int64_t subFolderSize = 0;
             status = getFolderSize(fullPath, &subFolderSize);
-            if (status != 0) break;
+            if (status != 0) {
+                FindClose(hFind);
+                return 2;
+            }
             *totalSize += subFolderSize;
         } else {
             LARGE_INTEGER tmpLiSize;
@@ -374,10 +377,6 @@ int getFolderSize(const char *folderPath, int64_t *totalSize) {
 
     DWORD lastError = GetLastError();
     FindClose(hFind);
-
-    if (status != 0) {
-        return 2;
-    }
 
     if (lastError != ERROR_NO_MORE_FILES) {
         return 3;
@@ -404,12 +403,20 @@ int createFolderIfNotExist(const char *path) {
 int checkInfRec(const char *sourceFolder, const char *destinationFolder) {
     char sourceFull[MAX_PATH];
     char destFull[MAX_PATH];
-    GetFullPathNameA(sourceFull, MAX_PATH, sourceFull, NULL);
-    GetFullPathNameA(sourceFull, MAX_PATH, destFull, NULL);
+    GetFullPathNameA(sourceFolder, MAX_PATH, sourceFull, NULL);
+    GetFullPathNameA(destinationFolder, MAX_PATH, destFull, NULL);
 
-    if (strstr(destFull, sourceFull) == destFull) {
-        return 1;
-    }
+    char *compStrings = strstr(destFull, sourceFull);
+    if (compStrings == NULL) return 0;
+
+    int nComp = 0, nSource = 0, i = 0, j = 0;
+    while (compStrings[i]!='\0' && i++ <= MAX_PATH);
+    while (sourceFull[j]!='\0' && j++ <= MAX_PATH);
+    nComp = i;
+    nSource = j;
+
+    if (nSource == nComp) return 1;
+    if (compStrings[nSource] == '\\' || compStrings[nSource] == '/') return 1;
     return 0;
 }
 
@@ -425,7 +432,7 @@ int copyFolderToFolder(const char *sourceFolder, const char *destinationFolder, 
 
     status = checkInfRec(sourceFolder, destinationFolder);
     if (status) {
-        printf("Connot copy file into itslef.\n");
+        printf("Connot copy file into itslef, <source>: %s, <destination>: %s\n", sourceFolder, destinationFolder);
         return 1;
     }
 
@@ -437,7 +444,7 @@ int copyFolderToFolder(const char *sourceFolder, const char *destinationFolder, 
         return 2;
     }
     if ((destAttributes == INVALID_FILE_ATTRIBUTES) || (!(destAttributes & FILE_ATTRIBUTE_DIRECTORY))) {
-        printf("Could not get acces to the destionation: %s\n", destinationFolder);
+        printf("Could not get acces to the destination: %s\n", destinationFolder);
         return 3;
     }
 
