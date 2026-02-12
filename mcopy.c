@@ -293,13 +293,16 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
     if (calledByFun == 0) printf("\rProgress: 0%%");
     
     status = copyFiletoFileByValidPathes(destination, hSource, hDest, &copiedCurr, totalSize, calledByFun);
+    
+    CloseHandle(hSource);
+    CloseHandle(hDest);
+    
     if (status != 0) {
         free(destination);
         return 5;
     }
 
-    CloseHandle(hSource);
-    CloseHandle(hDest);
+
     if (calledByFun == 0) printf("\n");
 
     // Smthg got wrong
