@@ -9,6 +9,7 @@
   <p>
     <img src="https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white">
     <img src="https://img.shields.io/badge/C-00599C?style=for-the-badge&logo=c&logoColor=white">
+    <img src="https://img.shields.io/badge/Win32-API-00A98F?style=for-the-badge">
   </p>
 </div>
 
