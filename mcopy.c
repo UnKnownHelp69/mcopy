@@ -289,7 +289,6 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
     }
 
     int64_t copiedCurr = 0;
-    
     if (!calledByFun) printf("\rProgress: 0%%");
     
     status = copyFiletoFileByValidPathes(destination, hSource, hDest, &copiedCurr, totalSize, calledByFun);
@@ -301,7 +300,6 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
         free(destination);
         return 5;
     }
-
 
     if (!calledByFun) printf("\n");
 
@@ -410,13 +408,13 @@ int checkInfRec(const char *sourceFolder, const char *destinationFolder) {
     if (compStrings == NULL) return 0;
 
     int nComp = 0, nSource = 0, i = 0, j = 0;
-    while (compStrings[i]!='\0' && i++ <= MAX_PATH);
-    while (sourceFull[j]!='\0' && j++ <= MAX_PATH);
+    while (i < MAX_PATH && compStrings[i++]!='\0');
+    while (j < MAX_PATH && sourceFull[j++]!='\0');
     nComp = i;
     nSource = j;
 
     if (nSource == nComp) return 1;
-    if (compStrings[nSource] == '\\' || compStrings[nSource] == '/') return 1;
+    if (compStrings[nSource - 1] == '\\' || compStrings[nSource - 1] == '/') return 1;
     return 0;
 }
 
@@ -425,6 +423,7 @@ int checkInfRec(const char *sourceFolder, const char *destinationFolder) {
  * source - path of folder to copy
  * destination - path of target folder
  * Returns 0 on success, non zero on error
+ * If folder exists just add files to folder
  */
 int copyFolderToFolder(const char *sourceFolder, const char *destinationFolder, int64_t *copiedSize, bool *KBytes, 
     int64_t totalSize, int64_t *copiedCurr, bool calledByFun) {
