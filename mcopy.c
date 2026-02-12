@@ -68,8 +68,8 @@ int getFileSize(const char *file_path, int64_t *totalSize) {
 /* Logic of copiyng one exactly valid file to valid dest
 0 - if good, else error
 */
-int copyFiletoFileByValidSources(const char *destination, const HANDLE hSource, 
-    const HANDLE hDest, int64_t *copiedCurr, const int64_t totalSize) {
+int copyFiletoFileByValidPathes(const char *destination, const HANDLE hSource, 
+    const HANDLE hDest, int64_t *copiedCurr, const int64_t totalSize, bool calledByFun) {
     
     int globPercent = -1;
     DWORD readSize, writtenSize;
@@ -94,7 +94,6 @@ int copyFiletoFileByValidSources(const char *destination, const HANDLE hSource,
             printf("Removing incompleted file: %s\n", destination);
 
             free(buffer);
-            showCursor();
             CloseHandle(hSource);
             CloseHandle(hDest);
             if (!DeleteFileA(destination)) {
@@ -108,7 +107,7 @@ int copyFiletoFileByValidSources(const char *destination, const HANDLE hSource,
 
         int currPercent = (int)((100LL * (*copiedCurr)) / totalSize);
 
-        if (currPercent != globPercent) {
+        if (currPercent != globPercent && calledByFun == 0) {
             printf("\rProgress: %d%%", currPercent);
             globPercent = currPercent;
         }
@@ -126,7 +125,8 @@ int copyFiletoFileByValidSources(const char *destination, const HANDLE hSource,
  * if in KB rize KBytes, not rized - bytes
  * Returns 0 on success, non zero on error
  */
-int copyFileToFile(const char *source, const char *destination, int64_t *copiedSize, bool *KBytes) {
+int copyFileToFile(const char *source, const char *destination, int64_t *copiedSize, bool *KBytes,
+    bool calledByFun) {
     int64_t totalSize = 0;
 
     int status = getFileSize(source, &totalSize);
@@ -156,16 +156,14 @@ int copyFileToFile(const char *source, const char *destination, int64_t *copiedS
    
     int64_t copiedCurr = 0;
     
-    hideCursor();
-    printf("\rProgress: 0%%");
+    if (calledByFun == 0) printf("\rProgress: 0%%");
     
-    status = copyFiletoFileByValidSources(destination, hSource, hDest, &copiedCurr, totalSize);
+    status = copyFiletoFileByValidPathes(destination, hSource, hDest, &copiedCurr, totalSize, calledByFun);
     if (status != 0) return 4; // if error fun cleans after itself ONLY in that fun.
     
-    showCursor();
     CloseHandle(hSource);
     CloseHandle(hDest);
-    printf("\n");
+    if (calledByFun == 0) printf("\n");
 
     // Smthg got wrong
     if (totalSize != copiedCurr) {
@@ -179,7 +177,7 @@ int copyFileToFile(const char *source, const char *destination, int64_t *copiedS
         return 6;
     }
 
-    if (totalSize / 1024 > KB_DISPLAY_THRESHOLD) {
+    if (totalSize / 1024 > KB_DISPLAY_THRESHOLD && calledByFun == 0) {
         *KBytes = true;
         *copiedSize = totalSize / 1024;
     } else {
@@ -197,7 +195,7 @@ int copyFileToFile(const char *source, const char *destination, int64_t *copiedS
  * */
 int getNameFile(const char *path, char **name) {
     int size = (int)strlen(path);
-    const char * splitter = path + size;
+    const char *splitter = path + size;
 
     
     while (splitter > path) {
@@ -207,10 +205,39 @@ int getNameFile(const char *path, char **name) {
         --splitter;
     }
     *name = (char *)malloc((int)strlen(splitter) + 1);
-    if (name == NULL){
+    if (*name == NULL){
         return 1;
     }
     strcpy(*name, splitter);
+    return 0;
+}
+
+/* Return 0 on success, non zero on error
+ * Take path of source and destination
+ * Extract from source name of file 
+ * Then put in destination full path of new file
+ * */
+int makeNewPathBySourcePathAndDestPath(const char *source, const char *folderDestination, char **destination) {
+    char *name = NULL;
+    int status = getNameFile(source, &name);
+    if (status != 0) {
+        printf("Could not find name of file to copy %s\n", source);
+        return 1;
+    }
+
+    *destination = (char *)malloc((int)strlen(folderDestination) + (int)strlen(name) + 2);
+    if (*destination == NULL) {
+        free(name);
+        printf("Could not locate memory\n");
+        return 2;
+    }
+    strcpy(*destination, folderDestination);
+    if (folderDestination[strlen(folderDestination) - 1] != '\\' &&
+            folderDestination[strlen(folderDestination) - 1] != '/') {
+        strcat(*destination, "\\");
+    }
+    strcat(*destination, name);
+    free(name);
     return 0;
 }
 
@@ -222,7 +249,8 @@ int getNameFile(const char *path, char **name) {
  * rize KBytes if in KB, else in bytes
  * Returns 0 on success, non zero on error
  */
-int copyFileToFolder(const char *source, const char *folderDestination, int64_t *copiedSize, bool *KBytes) {
+int copyFileToFolder(const char *source, const char *folderDestination, int64_t *copiedSize, bool *KBytes,
+    bool calledByFun) {
     int64_t totalSize = 0;
 
     int status = getFileSize(source, &totalSize);
@@ -240,29 +268,15 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
         printf("Could not open file to read: %s\n", source);
         return 2;
     }
+
+    char *destination = NULL;
+    status = makeNewPathBySourcePathAndDestPath(source, folderDestination, &destination);
     
-    char *name;
-    status = getNameFile(source, &name);
     if (status != 0) {
         CloseHandle(hSource);
-        printf("Could not find name of file to copy %s\n", source);
+        printf("Could not make path into dest folder %s\n", folderDestination);
         return 3;
     }
-
-    char *destination = (char *)malloc((int)strlen(folderDestination) + (int)strlen(name) + 2);
-    if (destination == NULL) {
-        CloseHandle(hSource);
-        free(name);
-        printf("Could not locate memory\n");
-        return 4;
-    }
-    strcpy(destination, folderDestination);
-    if (folderDestination[strlen(folderDestination) - 1] != '\\' &&
-            folderDestination[strlen(folderDestination) - 1] != '/') {
-        strcat(destination, "\\");
-    }
-    strcat(destination, name);
-    free(name);
 
     HANDLE hDest = CreateFileA(destination, GENERIC_WRITE, 0, 
             NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -271,24 +285,22 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
         CloseHandle(hSource);
         printf("Could not open/make file to write: %s\n", destination);
         free(destination);
-        return 5;
+        return 4;
     }
 
     int64_t copiedCurr = 0;
     
-    hideCursor();
-    printf("\rProgress: 0%%");
-
-    status = copyFiletoFileByValidSources(destination, hSource, hDest, &copiedCurr, totalSize);
+    if (calledByFun == 0) printf("\rProgress: 0%%");
+    
+    status = copyFiletoFileByValidPathes(destination, hSource, hDest, &copiedCurr, totalSize, calledByFun);
     if (status != 0) {
         free(destination);
-        return 6;
+        return 5;
     }
 
-    showCursor();
     CloseHandle(hSource);
     CloseHandle(hDest);
-    printf("\n");
+    if (calledByFun == 0) printf("\n");
 
     // Smthg got wrong
     if (totalSize != copiedCurr) {
@@ -298,14 +310,14 @@ int copyFileToFolder(const char *source, const char *folderDestination, int64_t 
         if (!DeleteFileA(destination)) {
             printf("Could not delete incompleted file %s\n", destination);
             free(destination);
-            return 7;
+            return 6;
         }
         free(destination);
-        return 8;
+        return 7;
     }
     free(destination);
 
-    if (totalSize / 1024 > KB_DISPLAY_THRESHOLD) {
+    if (totalSize / 1024 > KB_DISPLAY_THRESHOLD && calledByFun == 0) {
         *KBytes = true;
         *copiedSize = totalSize / 1024;
     } else {
@@ -367,47 +379,161 @@ int getFolderSize(const char *folderPath, int64_t *totalSize) {
     if (lastError != ERROR_NO_MORE_FILES) {
         return 3;
     }
-
     return 0;
 }
 
+/* Return 0 folder exist or was mabe
+ * 1 if error 
+ */
+int createFolderIfNotExist(const char *path) {
+    DWORD attrib = GetFileAttributesA(path);
+    if (attrib != INVALID_FILE_ATTRIBUTES 
+        && (attrib & FILE_ATTRIBUTE_DIRECTORY)) {
+        return 0;
+    }
+    if (CreateDirectoryA(path, NULL)) {
+        return 0;
+    }
+    return 1;
+}
+
+/*Check if destinationFolder is substr of sourceFolder*/
+int checkInfRec(const char *sourceFolder, const char *destinationFolder) {
+    char sourceFull[MAX_PATH];
+    char destFull[MAX_PATH];
+    GetFullPathNameA(sourceFull, MAX_PATH, sourceFull, NULL);
+    GetFullPathNameA(sourceFull, MAX_PATH, destFull, NULL);
+
+    if (strstr(destFull, sourceFull) == destFull) {
+        return 1;
+    }
+    return 0;
+}
 
 /* 
  * Copy from folder to folder
  * source - path of folder to copy
- * destination - path of target fold%er
+ * destination - path of target folder
  * Returns 0 on success, non zero on error
  */
-int copyFolderToFolder(const char *sourceFolder, const char *destinationFolder, int64_t *copiedSize, bool *KBytes) {
-    /* TODO
-     * Make new folder with the same name
-     * Iterate by all files in folder
-     * if file = copy file to folder
-     * if folder = copy folder to folder
-     * if != 0 any rec so rize error
-     * else continue
-     * so on
-     * */
+int copyFolderToFolder(const char *sourceFolder, const char *destinationFolder, int64_t *copiedSize, bool *KBytes, 
+    int64_t totalSize, int64_t *copiedCurr, bool calledByFun) {
+    int status = 0;
+
+    status = checkInfRec(sourceFolder, destinationFolder);
+    if (status) {
+        printf("Connot copy file into itslef.\n");
+        return 1;
+    }
+
     DWORD sourceAttributes = GetFileAttributesA(sourceFolder);
     DWORD destAttributes = GetFileAttributesA(destinationFolder);
     
     if (sourceAttributes == INVALID_FILE_ATTRIBUTES) {
         printf("Could not get acces to the source: %s\n", sourceFolder);
-        return 1;
-    }
-    if (destAttributes == INVALID_FILE_ATTRIBUTES) {
-        printf("Could not get acces to the destionation: %s\n", destinationFolder);
         return 2;
     }
-
-    int64_t totalSize = 0;
-    int status = getFolderSize(sourceFolder, &totalSize);
-    if (status != 0) {
+    if ((destAttributes == INVALID_FILE_ATTRIBUTES) || (!(destAttributes & FILE_ATTRIBUTE_DIRECTORY))) {
+        printf("Could not get acces to the destionation: %s\n", destinationFolder);
         return 3;
     }
 
-    printf("Total size of folder is %lld bytes\n", totalSize);
+    if (!calledByFun) {
+        status = getFolderSize(sourceFolder, &totalSize);
+        if (status != 0) {
+            return 4;
+        }
+        *copiedCurr = 0;
+    }
 
+    char *destinationPath = NULL; // we exctract name from source of last item and add it to destinationPath
+    status = makeNewPathBySourcePathAndDestPath(sourceFolder, destinationFolder, &destinationPath);
+    if (status != 0) return 5;
+
+    status = createFolderIfNotExist(destinationPath);
+    if (status != 0) {
+        free(destinationPath);
+        return 6;
+    }
+
+    WIN32_FIND_DATAA findData;
+    char searchPath[MAX_PATH];
+    HANDLE hFind;
+
+    // Format path to find
+    snprintf(searchPath, sizeof(searchPath), "%s\\*", sourceFolder);
+
+    hFind = FindFirstFileA(searchPath, &findData);
+    if (hFind == INVALID_HANDLE_VALUE) {
+        free(destinationPath);
+        if (GetLastError() == ERROR_FILE_NOT_FOUND) return 0; // empty folder
+        else return 7; // smth else is wrong
+    }
+
+    if (!calledByFun) {
+        printf("\rProgress: 0%%");
+    } else {
+        int currPercent = (int)((100LL * (*copiedCurr)) / totalSize);
+        printf("\rProgress: %d%%", currPercent);
+    }
+
+    do {
+        if (findData.cFileName[0] == '.' && (findData.cFileName[1] == '\0' || 
+        (findData.cFileName[1] == '.' && findData.cFileName[2] == '\0'))) continue;
+
+        char sourcePath[MAX_PATH];
+        snprintf(sourcePath, sizeof(sourcePath), "%s\\%s", sourceFolder, findData.cFileName);
+
+        if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) { // folder
+            int64_t copiedFileSize = 0;
+            bool KBtsOut = false;
+            int status = copyFolderToFolder(sourcePath, destinationPath, &copiedFileSize, &KBtsOut, totalSize, copiedCurr, 1);
+            
+            if (status != 0) {
+                printf("Cannot copy folder: %s\n", sourcePath);
+                FindClose(hFind);
+                free(destinationPath);
+                return 8;
+            }
+
+        } else { // file
+            int64_t copiedFileSize = 0;
+            bool KBtsOut = 0;
+            int status = copyFileToFolder(sourcePath, destinationPath, &copiedFileSize, &KBtsOut, 1);
+            
+            if (status == 0) {
+                *copiedCurr += copiedFileSize;
+                if (totalSize > 0) {
+                    int currPercent = (int)((100LL * (*copiedCurr)) / totalSize);
+                    printf("\rProgress: %d%%", currPercent);
+                }
+            } else {
+                printf("Cannot copy file: %s\n", sourcePath);
+                FindClose(hFind);
+                free(destinationPath);
+                return 9;
+            }
+        }
+    } while (FindNextFileA(hFind, &findData));
+    
+    if (calledByFun == 0) printf("\n");
+
+    DWORD lastError = GetLastError();
+    FindClose(hFind);
+    free(destinationPath);
+
+    if (lastError != ERROR_NO_MORE_FILES) return 10;
+
+    if (!calledByFun) {
+        if (totalSize / 1024 > KB_DISPLAY_THRESHOLD) {
+            *KBytes = true;
+            *copiedSize = totalSize / 1024;
+        } else {
+            *KBytes = false;
+            *copiedSize = totalSize;
+        }
+    }
+    
     return 0;
 }
 
@@ -443,15 +569,17 @@ int main(int argc, char *argv[]) {
         printf("<destination> is not available path\n");
         return 1;
     }
+
+    hideCursor();
     
     if (source_type & FILE_ATTRIBUTE_DIRECTORY) {
         printf("<source> is a folder\n");
         if (destination_type & FILE_ATTRIBUTE_DIRECTORY) {
             printf("<destination> is a folder\n");
             
-            int64_t file_size = 0;
+            int64_t file_size = 0, copiedCurr;
             bool KBtsOut = false;
-            int status = copyFolderToFolder(source, destination, &file_size, &KBtsOut);
+            int status = copyFolderToFolder(source, destination, &file_size, &KBtsOut, 0, &copiedCurr, 0);
 
             if (status == 0) {
                 if (KBtsOut) printf("Successfuly copied %lld KB\n", file_size);
@@ -462,6 +590,7 @@ int main(int argc, char *argv[]) {
 
         } else {
             printf("It is impossible to copy folder to file\n");
+            showCursor();
             return 1;
         }
     } else {
@@ -471,7 +600,7 @@ int main(int argc, char *argv[]) {
 
             int64_t file_size = 0;
             bool KBtsOut = 0;
-            int status = copyFileToFolder(source, destination, &file_size, &KBtsOut);
+            int status = copyFileToFolder(source, destination, &file_size, &KBtsOut, 0);
             
             if (status == 0) {
                 if (KBtsOut) printf("Successfuly copied %lld KB\n", file_size);
@@ -485,7 +614,7 @@ int main(int argc, char *argv[]) {
             
             int64_t file_size = 0;
             bool KBtsOut = false;
-            int status = copyFileToFile(source, destination, &file_size, &KBtsOut);
+            int status = copyFileToFile(source, destination, &file_size, &KBtsOut, 0);
             
             if (status == 0) {
                 if (KBtsOut) printf("Successfuly copied %lld KB\n", file_size);
@@ -496,6 +625,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    showCursor();
     return 0;
 }
-
