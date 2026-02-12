@@ -1,6 +1,3 @@
-# mcopy
-File copying utility for windows
-
 <div align="center">
   <h1>📁 MCOPY</h1>
   <h3>Console utility for coping files and folders in Windows</h3>
